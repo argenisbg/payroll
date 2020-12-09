@@ -9,14 +9,14 @@ Apache or NginX<br>
 Composer<br>
 
 ### Steps to reproduce the API Call
-:one: Clone repository <br>
-:two: Duplicate the .env.example file and rename it just to .env
-:three: Start the artisan server: php artisan serve <br>
-:four: You can import this postman collection with the request: <a href="https://drive.google.com/file/d/1wuqM5O2MzmU_8bYWAEW965F0jPfMnxoH/view?usp=sharing">Postman File</a><br>
+:one:  Clone repository <br>
+:two:  Duplicate the .env.example file and rename it just to .env <br>
+:three:  Start the artisan server: php artisan serve <br>
+:four:  You can import this postman collection with the request: <a href="https://drive.google.com/file/d/1wuqM5O2MzmU_8bYWAEW965F0jPfMnxoH/view?usp=sharing">Postman File</a><br>
         Or use CURL in your terminal:<br>
         curl --location --request POST 'http://127.0.0.1:8000/api/payroll/calculate' \<br>
 --form 'file=@/absolute/path/to/your/file/TimeSheetData.json'<br>
-:five: You will see the JSON response with the expected information
+:five:  You will see the JSON response with the expected information
 
 ### Architecture
 My thinking is that the API could be installed in a EC2 instance with a LEMP stack
