@@ -20,22 +20,22 @@ class TimeSheetController
 
         if ($validator->fails()) {
             return response()->json([
-                "status" => false,
-                "error" => $validator->messages()->first()
+                'status' => false,
+                'message' => $validator->messages()->first()
             ], 422);
         }
 
-        $timeSheet =  new TimeSheetService($request->file('file'));
-        $isValidJson =  $timeSheet->validateJsonFormat();
-
-        if (!$isValidJson) {
+        try {
+            $timeSheet =  new TimeSheetService($request->file('file'));
+            $data = $timeSheet->process();
+        } catch (\Exception $ex) {
             return response()->json([
                 'status' => false,
-                'message' => 'The file is not a valid JSON file'
+                'message' => $ex->getMessage()
             ], 422);
         }
 
-        return response()->json($timeSheet->process());
+        return response()->json($data);
     }
 
     /**

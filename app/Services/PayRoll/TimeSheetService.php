@@ -17,28 +17,16 @@ class TimeSheetService
     }
 
     /**
-     * Validate if JSON file has a correct format
-     * @return bool
-     * @author Argenis Barraza Guillen
-     */
-    public function validateJsonFormat()
-    {
-        $json = json_decode(
-            file_get_contents($this->file), true
-        );
-
-        return $json === NULL ? false : true;
-    }
-
-    /**
      * Process information from json file
      * @return array
      * @author Argenis Barraza Guillen
      */
     public function process()
     {
+        $this->validateJsonFormat();
         $file = $this->uploadFile($this->file);
         $collection = $this->createCollectionFromJsonFilePath(Storage::path($file));
+        $this->validateJsonData($collection);
         $collectionFiltered = $this->filterCollectionByUniqueClasses($collection);
         $collectionWithExtraTime = $this->addCollectionExtraTime($collectionFiltered);
         $collectionSortedAndGrouped = $this->sortCollectionAndGroupByInstructor($collectionWithExtraTime);
@@ -213,5 +201,40 @@ class TimeSheetService
         }
 
         return $totalMinutes;
+    }
+
+    /**
+     * Validate if JSON file has a correct format
+     * @return void
+     * @throws \Exception
+     * @author Argenis Barraza Guillen
+     */
+    public function validateJsonFormat()
+    {
+        $json = json_decode(
+            file_get_contents($this->file), true
+        );
+
+        if ($json === NULL) {
+            throw new \Exception("The file must be a file of type: json.");
+        }
+    }
+
+    /**
+     * Validate if JSON file has a correct data
+     * @param $collection
+     * @return void
+     * @throws \Exception
+     * @author Argenis Barraza Guillen
+     */
+    public function validateJsonData($collection)
+    {
+        $validator = $collection->contains(function($item){
+            return isset($item->start_datetime).isset($item->end_datetime);
+        });
+
+        if (!$validator) {
+            throw new \Exception("Json file does not have the correct data");
+        }
     }
 }
