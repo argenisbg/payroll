@@ -41,12 +41,7 @@ class CalculateTimeSheetTest extends TestCase
         $response->assertStatus(422);
         $response->assertJson([
             'status' => false,
-            'data' => '',
-            'message' => [
-                'file' => [
-                    'The file must be a file of type: application/json.'
-                ]
-            ]
+            'error' => 'The file must be a file of type: json.'
         ]);
     }
 

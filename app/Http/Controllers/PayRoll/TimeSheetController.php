@@ -20,9 +20,8 @@ class TimeSheetController
 
         if ($validator->fails()) {
             return response()->json([
-                'status' => false,
-                'data' => '',
-                'message'=> $validator->messages()
+                "status" => false,
+                "error" => $validator->messages()->first()
             ], 422);
         }
 
@@ -36,12 +35,7 @@ class TimeSheetController
             ], 422);
         }
 
-        $data = $timeSheet->process();
-
-        return response()->json([
-            'status' => true,
-            'message' => $data->toArray(),
-        ], 200);
+        return response()->json($timeSheet->process());
     }
 
     /**
@@ -53,7 +47,7 @@ class TimeSheetController
     protected function validateRequest(Request $request)
     {
         return \Validator::make($request->all(), [
-            'file' => 'required'
+            'file.*' => 'required|mimes:json'
         ]);
     }
 }

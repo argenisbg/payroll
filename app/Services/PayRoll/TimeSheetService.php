@@ -4,17 +4,12 @@ namespace App\Services\PayRoll;
 
 use App\Config\Common;
 use Carbon\Carbon;
-use Exception;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
-use Spatie\Period\Boundaries;
-use Spatie\Period\Period;
-use Spatie\Period\PeriodCollection;
-use Spatie\Period\Precision;
 
 class TimeSheetService
 {
-    private $file;
+    protected $file;
+    const ADMIN_TIME_PER_CLASS = 125;
 
     public function __construct($file)
     {
@@ -37,7 +32,7 @@ class TimeSheetService
 
     /**
      * Process information from json file
-     * @return \Illuminate\Support\Collection
+     * @return array
      * @author Argenis Barraza Guillen
      */
     public function process()
@@ -46,16 +41,29 @@ class TimeSheetService
         $collection = $this->createCollectionFromJsonFilePath(Storage::path($file));
         $collectionFiltered = $this->filterCollectionByUniqueClasses($collection);
         $collectionWithExtraTime = $this->addCollectionExtraTime($collectionFiltered);
-        $collectionSortedAndGroup = $this->sortCollectionAndGroupByInstructor($collectionWithExtraTime);
-        //$collectionRemoveOverlapping = $this->removeCollectionOverlapsPerInstructor($collectionSortedAndGroup);
+        $collectionSortedAndGrouped = $this->sortCollectionAndGroupByInstructor($collectionWithExtraTime);
+        $this->removeCollectionOverlaps($collectionSortedAndGrouped);
+        $this->removeCollectionGaps($collectionSortedAndGrouped);
 
-        return $collectionSortedAndGroup;
+        return $this->calculateFinalAdminTime($collectionSortedAndGrouped);
+    }
+
+    /**
+     * Upload the file
+     * @param $file
+     * @return mixed
+     * @author Argenis Barraza Guillen
+     */
+    public function uploadFile($file)
+    {
+        $common = new Common();
+        return $common->uploadFile($file);
     }
 
     /**
      * Create a collection from a JSON file
      * @param $filePath
-     * @return \Illuminate\Support\Collection
+     * @return Collection
      * @author Argenis Barraza Guillen
      */
     public static function createCollectionFromJsonFilePath($filePath)
@@ -70,7 +78,7 @@ class TimeSheetService
     /**
      * Filter collection and remove duplicated start and end time classes
      * @param $collection
-     * @return \Illuminate\Support\Collection
+     * @return Collection
      * @author Argenis Barraza Guillen
      */
     public static function filterCollectionByUniqueClasses($collection)
@@ -95,24 +103,10 @@ class TimeSheetService
         });
     }
 
-    public static function removeCollectionOverlapsPerInstructor($collection)
-    {
-        foreach ($collection as $instructor => $classes) {
-            $periods[$instructor] = new PeriodCollection();
-            foreach ($classes as $class) {
-                $startDate = Carbon::createFromDate($class->start_datetime)->toDateTimeString();
-                $endDate = Carbon::createFromDate($class->end_datetime)->toDateTimeString();
-                $periods[$instructor] = $periods[$instructor]->add(Period::make($startDate, $endDate, Precision::MINUTE));
-            }
-            $overlaps[$instructor] = $periods[$instructor]->overlap();
-        }
-        return collect($overlaps);
-    }
-
     /**
      * Order collection by start_datetime and group it by instructor id
-     * @param \Illuminate\Support\Collection $collection
-     * @return \Illuminate\Support\Collection
+     * @param Collection $collection
+     * @return Collection
      * @author Argenis Barraza Guillen
      */
     public function sortCollectionAndGroupByInstructor($collection)
@@ -123,19 +117,101 @@ class TimeSheetService
     }
 
     /**
-     * Upload the file
-     * @param $file
-     * @return mixed
+     * Remove overlaps through all collection classes
+     * @param Collection $instructors
+     * @return void
      * @author Argenis Barraza Guillen
      */
-    public function uploadFile($file)
+    public static function removeCollectionOverlaps($instructors)
     {
-        $common = new Common();
-        return $common->uploadFile($file);
+        foreach ($instructors as $instructor => $classes) {
+            foreach ($classes as $key => $class) {
+                if($key == 0) {
+                    continue;
+                }
+                $previousClass = $classes[$key - 1];
+                $currentClass = $classes[$key];
+                $startTime = Carbon::parse($previousClass->end_datetime);
+                $endTime = Carbon::parse($currentClass->start_datetime);
+                $difference = $endTime->lessThan($startTime);
+
+                if ($difference) {
+                    $currentClass->start_datetime = $previousClass->end_datetime;
+                }
+            }
+        }
+
     }
 
-    public static function overlaps($startDate, $endDate, $collection)
+    /**
+     * Remove gaps through all collection classes
+     * @param Collection $instructors
+     * @return void
+     * @author Argenis Barraza Guillen
+     */
+    public static function removeCollectionGaps($instructors)
     {
+        foreach ($instructors as $instructor => $classes) {
+            foreach ($classes as $key => $class) {
+                if($key == 0) {
+                    continue;
+                }
+                $previousClass = $classes[$key - 1];
+                $currentClass = $classes[$key];
+                $startTime = Carbon::parse($previousClass->end_datetime);
+                $endTime = Carbon::parse($currentClass->start_datetime);
+                $difference = $endTime->diffInMinutes($startTime);
 
+                if ($difference <= 60) {
+                    $currentClass->start_datetime = $previousClass->end_datetime;
+                }
+            }
+        }
+    }
+
+    /**
+     * Calculate final admin time and returns the array with all data
+     * @param Collection $instructors
+     * @return array
+     * @author Argenis Barraza Guillen
+     */
+    public function calculateFinalAdminTime($instructors)
+    {
+        $finalData = [];
+        foreach ($instructors as $instructor => $classes) {
+            $allocatedAdminTime = $classes->count() * self::ADMIN_TIME_PER_CLASS;
+            $totalOfMinutesWorked = self::getTotalMinutesWorkedPerDay($classes);
+            $finalAdminTime = $allocatedAdminTime - $totalOfMinutesWorked;
+            $finalData[] = [
+                "instructor_id" => $instructor,
+                "classes" => $classes->map(function($item){
+                  return [
+                      "start_time" => $item->start_datetime,
+                      "end_time" => $item->end_datetime,
+                  ];
+                }),
+                "admin_time" => $finalAdminTime
+            ];
+        }
+
+        return $finalData;
+    }
+
+    /**
+     * Get the total number of minutes worked
+     * @param Collection $classes
+     * @return int
+     * @author Argenis Barraza Guillen
+     */
+    public static function getTotalMinutesWorkedPerDay($classes)
+    {
+        $totalMinutes = 0;
+        foreach ($classes as $class) {
+            $startDate = Carbon::parse($class->start_datetime);
+            $endDate = Carbon::parse($class->end_datetime);
+            $totalMinutes += $startDate->diffInMinutes($endDate);
+        }
+
+        return $totalMinutes;
     }
 }
